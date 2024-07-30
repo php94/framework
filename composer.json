@@ -1,0 +1,25 @@
+{
+    "name": "php94/framework",
+    "description": "php开发框架",
+    "type": "library",
+    "license": "GPL-3.0",
+    "require": {
+        "php94/cache": "^1.0",
+        "php94/container": "^1.0",
+        "php94/db": "^1.0",
+        "php94/emitter": "^1.0",
+        "php94/event": "^1.0",
+        "php94/factory": "^1.0",
+        "php94/form": "^1.0",
+        "php94/handler": "^1.0",
+        "php94/logger": "^1.0",
+        "php94/router": "^1.0",
+        "php94/session": "^1.0",
+        "php94/template": "^1.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "PHP94\\": "src/"
+        }
+    }
+}
