@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace PHP94\Help;
 
+use Composer\Autoload\ClassLoader;
 use Composer\DependencyResolver\Operation\InstallOperation;
 use Composer\DependencyResolver\Operation\UninstallOperation;
 use Composer\DependencyResolver\Operation\UpdateOperation;
 use Composer\Installer\PackageEvent;
 use Exception;
 use PDO;
+use ReflectionClass;
 use Throwable;
 
 class Package
@@ -21,6 +23,69 @@ class Package
          */
         $operation = $event->getOperation();
         $package_name = $operation->getPackage()->getName();
+        if ($package_name == 'php94/db') {
+            self::exec(function () {
+                $root = dirname((new ReflectionClass(ClassLoader::class))->getFileName(), 3);
+
+                fwrite(STDOUT, "请输入数据库地址(默认127.0.0.1)[server]：");
+                $server = trim((string) fgets(STDIN)) ?: '127.0.0.1';
+
+                fwrite(STDOUT, "请输入数据库端口(默认3306)[port]：");
+                $port = trim((string) fgets(STDIN)) ?: 3306;
+
+                fwrite(STDOUT, "请输入数据库名称[database]：");
+                $database = trim((string) fgets(STDIN));
+
+                fwrite(STDOUT, "请输入数据库账户(默认root)[username]：");
+                $username = trim((string) fgets(STDIN)) ?: 'root';
+
+                fwrite(STDOUT, "请输入数据库密码(默认空)[password]：");
+                $password = trim((string) fgets(STDIN)) ?: '';
+
+                $databasetpl = <<<'str'
+<?php
+return [
+    'master'=>[
+        'database_type' => 'mysql',
+        'database_name' => '{database_name}',
+        'server' => '{server}',
+        'username' => '{username}',
+        'password' => '{password}',
+        'charset' => 'utf8mb4',
+        'collation' => 'utf8mb4_general_ci',
+        'port' => '{port}',
+        'logging' => false,
+        'option' => [
+            \PDO::ATTR_CASE => \PDO::CASE_NATURAL,
+            \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+            \PDO::ATTR_STRINGIFY_FETCHES => false,
+            \PDO::ATTR_EMULATE_PREPARES => false,
+        ],
+        'command' => ['SET SQL_MODE=ANSI_QUOTES'],
+    ],
+];
+str;
+                $database_file = $root . '/config/database.php';
+                if (!file_exists($database_file)) {
+                    if (!is_dir(dirname($database_file))) {
+                        mkdir(dirname($database_file), 0755, true);
+                    }
+                }
+                file_put_contents($database_file, str_replace([
+                    '{server}',
+                    '{port}',
+                    '{database_name}',
+                    '{username}',
+                    '{password}',
+                ], [
+                    $server,
+                    $port,
+                    $database,
+                    $username,
+                    $password
+                ], $databasetpl));
+            });
+        }
         if ($callable = self::getCallable($package_name, 'install')) {
             self::exec($callable);
         }
