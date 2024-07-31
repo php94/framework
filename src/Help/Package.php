@@ -50,7 +50,7 @@ class Package
 return [
     'master'=>[
         'database_type' => 'mysql',
-        'database' => '{database}',
+        'database_name' => '{database}',
         'server' => '{server}',
         'username' => '{username}',
         'password' => '{password}',
