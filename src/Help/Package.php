@@ -4,14 +4,12 @@ declare(strict_types=1);
 
 namespace PHP94\Help;
 
-use Composer\Autoload\ClassLoader;
 use Composer\DependencyResolver\Operation\InstallOperation;
 use Composer\DependencyResolver\Operation\UninstallOperation;
 use Composer\DependencyResolver\Operation\UpdateOperation;
 use Composer\Installer\PackageEvent;
 use Exception;
 use PDO;
-use ReflectionClass;
 use Throwable;
 
 class Package
@@ -25,8 +23,7 @@ class Package
         $package_name = $operation->getPackage()->getName();
         if ($package_name == 'php94/db') {
             self::exec(function () {
-                $root = dirname((new ReflectionClass(ClassLoader::class))->getFileName(), 3);
-
+                database:
                 fwrite(STDOUT, "请输入数据库地址(默认127.0.0.1)[server]：");
                 $server = trim((string) fgets(STDIN)) ?: '127.0.0.1';
 
@@ -41,13 +38,19 @@ class Package
 
                 fwrite(STDOUT, "请输入数据库密码(默认空)[password]：");
                 $password = trim((string) fgets(STDIN)) ?: '';
+                fwrite(STDOUT, "地址：" . $server . " 端口：" . $port . " 数据库：" . $database . " 账户：" . $username . " 密码：" . $password . "\n");
+                fwrite(STDOUT, "重试请输[no] 确认[yes]：");
+                $input = trim((string) fgets(STDIN)) ?: 'yes';
+                if ($input != 'yes') {
+                    goto database;
+                }
 
                 $databasetpl = <<<'str'
 <?php
 return [
     'master'=>[
         'database_type' => 'mysql',
-        'database_name' => '{database_name}',
+        'database' => '{database}',
         'server' => '{server}',
         'username' => '{username}',
         'password' => '{password}',
@@ -65,7 +68,7 @@ return [
     ],
 ];
 str;
-                $database_file = $root . '/config/database.php';
+                $database_file = dirname(__DIR__, 5) . '/config/database.php';
                 if (!file_exists($database_file)) {
                     if (!is_dir(dirname($database_file))) {
                         mkdir(dirname($database_file), 0755, true);
@@ -74,7 +77,7 @@ str;
                 file_put_contents($database_file, str_replace([
                     '{server}',
                     '{port}',
-                    '{database_name}',
+                    '{database}',
                     '{username}',
                     '{password}',
                 ], [
