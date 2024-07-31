@@ -6,7 +6,6 @@ namespace PHP94;
 
 use Composer\Autoload\ClassLoader;
 use Exception;
-use InvalidArgumentException;
 use PHP94\Facade\App;
 use ReflectionClass;
 
@@ -152,7 +151,7 @@ class Config
         $res = [];
         list($path, $group) = explode('@', $key . '@');
         if (!strlen($path)) {
-            throw new InvalidArgumentException('Invalid Argument Exception');
+            throw new Exception('Invalid Argument Exception');
         }
 
         $paths = array_filter(

@@ -21,6 +21,7 @@ use PHP94\Facade\Emitter;
 use PHP94\Facade\Event;
 use PHP94\Facade\Factory;
 use PHP94\Facade\Handler;
+use PHP94\Facade\Lang;
 use PHP94\Facade\Logger;
 use PHP94\Facade\Router;
 use PHP94\Facade\Session;
@@ -132,6 +133,7 @@ class Framework
                     'config' => Config::getInstance(),
                     'session' => Session::getInstance(),
                     'request' => Request::getInstance(),
+                    'lang' => Lang::getInstance(),
                     'template' => $template,
                     'container' => Container::getInstance(),
                 ]);
