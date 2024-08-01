@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace PHPAPP;
+namespace PHP94;
 
-use PHPAPP\Facade\App;
-use PHPAPP\Facade\Config;
-use PHPAPP\Facade\Framework;
+use PHP94\Facade\App;
+use PHP94\Facade\Config;
+use PHP94\Facade\Framework;
 use Psr\EventDispatcher\ListenerProviderInterface;
 
 class ListenerProvider implements ListenerProviderInterface

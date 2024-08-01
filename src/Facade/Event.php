@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace PHPAPP\Facade;
+namespace PHP94\Facade;
 
-use PHPAPP\Event\Event as EventEvent;
-use PHPAPP\ListenerProvider;
+use PHP94\Event\Event as EventEvent;
+use PHP94\ListenerProvider;
 use Psr\EventDispatcher\ListenerProviderInterface;
 
 class Event
