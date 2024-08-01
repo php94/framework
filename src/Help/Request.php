@@ -4,16 +4,10 @@ declare(strict_types=1);
 
 namespace PHP94\Help;
 
-use PHP94\Facade\Container;
 use PHP94\Facade\Framework;
 
 class Request
 {
-    public static function getInstance(): Request
-    {
-        return Container::get(Request::class);
-    }
-
     public static function has(string $field): bool
     {
         $fields = self::fieldFilter($field);
