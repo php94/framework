@@ -18,9 +18,9 @@ class Container
         return $container;
     }
 
-    public static function get(string $id, bool $new = false)
+    public static function get(string $id, array $params = [], bool $new = false)
     {
-        return self::getInstance()->get($id, $new);
+        return self::getInstance()->get($id, $params, $new);
     }
 
     public static function has(string $id): bool
