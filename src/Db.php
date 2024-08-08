@@ -2,10 +2,9 @@
 
 declare(strict_types=1);
 
-namespace PHP94\Facade;
+namespace PHP94;
 
 use Medoo\Medoo;
-use PHP94\Db\Db as DbDb;
 
 /**
  * @method static false|\PDOStatement query($query, $map = [])
@@ -36,24 +35,46 @@ use PHP94\Db\Db as DbDb;
  */
 class Db
 {
-    public static function getInstance(): DbDb
-    {
-        return Container::get(DbDb::class);
-    }
-
     public static function master(): Medoo
     {
-        return self::getInstance()->master();
+        static $db;
+        if (!$db) {
+            $db = self::getMedoo(Config::get('database.master', []));
+        }
+        return $db;
     }
 
     public static function slave(): Medoo
     {
-        return self::getInstance()->slave();
+        static $db;
+        if (!$db) {
+            if ($slaves = Config::get('database.slaves', [])) {
+                $db = self::getMedoo(array_rand($slaves));
+            } else {
+                $db = self::master();
+            }
+        }
+        return $db;
     }
 
     public static function getMedoo(array $config = []): Medoo
     {
-        return self::getInstance()->getMedoo($config);
+        return new Medoo(array_merge([
+            'database_type' => 'mysql',
+            'database_name' => 'test',
+            'server' => '127.0.0.1',
+            'username' => 'root',
+            'password' => 'root',
+            'charset' => 'utf8mb4',
+            'prefix' => 'prefix_',
+            'option' => [
+                \PDO::ATTR_CASE => \PDO::CASE_NATURAL,
+                \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+                \PDO::ATTR_STRINGIFY_FETCHES => false,
+                \PDO::ATTR_EMULATE_PREPARES => false,
+            ],
+            'command' => ['SET SQL_MODE=ANSI_QUOTES'],
+        ], $config));
     }
 
     public static function __callStatic($name, $arguments)

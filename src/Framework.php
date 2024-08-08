@@ -5,50 +5,37 @@ declare(strict_types=1);
 namespace PHP94;
 
 use Closure;
+use Composer\Autoload\ClassLoader;
 use ErrorException;
 use Exception;
-use GuzzleHttp\Psr7\ServerRequest;
 use PHP94\Cache\NullCache;
 use PHP94\Container\Container as ContainerContainer;
-use PHP94\Db\Db as DbDb;
+use PHP94\Emitter\Emitter;
 use PHP94\Event\Event as EventEvent;
-use PHP94\Facade\App;
-use PHP94\Facade\Cache;
-use PHP94\Facade\Config;
-use PHP94\Facade\Container;
-use PHP94\Facade\Db;
-use PHP94\Facade\Emitter;
-use PHP94\Facade\Event;
-use PHP94\Facade\Factory;
-use PHP94\Facade\Handler;
-use PHP94\Facade\Lang;
-use PHP94\Facade\Logger;
-use PHP94\Facade\Router;
-use PHP94\Facade\Session;
-use PHP94\Factory\Factory as FactoryFactory;
-use PHP94\Handler\Handler as HandlerHandler;
-use PHP94\Help\Request;
-use PHP94\ListenerProvider;
-use PHP94\Logger\Logger as LoggerLogger;
+use PHP94\Factory\RequestFactory;
+use PHP94\Factory\ResponseFactory;
+use PHP94\Factory\ServerRequestFactory;
+use PHP94\Factory\StreamFactory;
+use PHP94\Factory\UploadedFileFactory;
+use PHP94\Factory\UriFactory;
+use PHP94\Logger\Logger;
 use PHP94\Template\Template;
 use Psr\Container\ContainerInterface;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\EventDispatcher\ListenerProviderInterface;
 use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Message\ResponseFactoryInterface;
-use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestFactoryInterface;
-use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Http\Message\UploadedFileFactoryInterface;
 use Psr\Http\Message\UriFactoryInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 use Psr\Log\LoggerInterface;
 use Psr\SimpleCache\CacheInterface;
+use ReflectionClass;
 
 class Framework
 {
-    public function __construct()
+    public static function run()
     {
         set_error_handler(function ($errno, $errstr, $errfile, $errline) {
             if (!(error_reporting() & $errno)) {
@@ -60,46 +47,17 @@ class Framework
         $container = Container::getInstance();
         foreach ([
             ContainerContainer::class => $container,
-            LoggerInterface::class => LoggerLogger::class,
+            LoggerInterface::class => Logger::class,
             CacheInterface::class => NullCache::class,
-            ResponseFactoryInterface::class => FactoryFactory::class,
-            UriFactoryInterface::class => FactoryFactory::class,
-            ServerRequestFactoryInterface::class => FactoryFactory::class,
-            RequestFactoryInterface::class => FactoryFactory::class,
-            StreamFactoryInterface::class => FactoryFactory::class,
-            UploadedFileFactoryInterface::class => FactoryFactory::class,
+            ResponseFactoryInterface::class => ResponseFactory::class,
+            UriFactoryInterface::class => UriFactory::class,
+            ServerRequestFactoryInterface::class => ServerRequestFactory::class,
+            RequestFactoryInterface::class => RequestFactory::class,
+            StreamFactoryInterface::class => StreamFactory::class,
+            UploadedFileFactoryInterface::class => UploadedFileFactory::class,
             ContainerInterface::class => ContainerContainer::class,
             EventDispatcherInterface::class => EventEvent::class,
             ListenerProviderInterface::class => EventEvent::class,
-            EventEvent::class => function (
-                EventEvent $event,
-                ListenerProvider $listenerProvider
-            ) {
-                $event->addProvider($listenerProvider);
-            },
-            HandlerHandler::class => function () {
-                $appname = $this->getServerRequest()->getAttribute('appname', '');
-                if (App::isActive($appname)) {
-                    $cls = $this->getServerRequest()->getAttribute('handler', '');
-                    if (class_exists($cls) && is_subclass_of($cls, RequestHandlerInterface::class, true)) {
-                        $handler = Container::get($cls);
-                    }
-                }
-                if (!isset($handler)) {
-                    $handler = new class implements RequestHandlerInterface
-                    {
-                        public function handle(ServerRequestInterface $request): ResponseInterface
-                        {
-                            return Factory::createResponse(404);
-                        }
-                    };
-                }
-                return new HandlerHandler(Container::getInstance(), $handler);
-            },
-            DbDb::class => [
-                'master_config' => Config::get('database.master', []),
-                'slaves_config' => Config::get('database.slaves', []),
-            ],
             Template::class => function (
                 Template $template
             ) {
@@ -126,14 +84,14 @@ class Framework
                     return null;
                 });
                 $template->assign([
-                    'db' => Db::getInstance(),
-                    'cache' => Cache::getInstance(),
-                    'logger' => Logger::getInstance(),
-                    'router' => Router::getInstance(),
-                    'config' => Config::getInstance(),
-                    'session' => Session::getInstance(),
-                    'request' => Request::getInstance(),
-                    'lang' => Lang::getInstance(),
+                    'db' => Container::get(Db::class),
+                    'cache' => Container::get(Cache::class),
+                    'logger' => Container::get(Logger::class),
+                    'router' => Container::get(Router::class),
+                    'config' => Container::get(Config::class),
+                    'session' => Container::get(Session::class),
+                    'request' => Container::get(Request::class),
+                    'lang' => Container::get(Lang::class),
                     'template' => $template,
                     'container' => Container::getInstance(),
                 ]);
@@ -189,63 +147,168 @@ class Framework
                 throw new Exception('the option ' . $id . ' cannot config..');
             }
         }
-    }
-
-    public function run()
-    {
+        self::initApp();
+        self::initLang();
+        self::initEvent();
         Event::dispatch(Container::getInstance());
         Event::dispatch(Router::getInstance());
         Event::dispatch(Handler::getInstance());
-        $response = Handler::handle($this->getServerRequest());
-        Emitter::emit($response);
+        $response = Handler::getInstance()->handle(Request::getServerRequest());
+        (new Emitter())->emit($response);
     }
 
-    public function execute(callable $callable, array $params = [])
+    public static function execute(callable $callable, array $params = [])
     {
         $args = Container::reflectArguments($callable, $params);
         return call_user_func($callable, ...$args);
     }
 
-    public function getServerRequest(): ServerRequestInterface
+    private static function initEvent()
     {
-        $uri = ServerRequest::getUriFromGlobals();
-        if (strpos($_SERVER['REQUEST_URI'] ?? '', $_SERVER['SCRIPT_NAME']) === 0) {
-            $base = $_SERVER['SCRIPT_NAME'];
-        } else {
-            $base = strlen(dirname($_SERVER['SCRIPT_NAME'])) > 1 ? dirname($_SERVER['SCRIPT_NAME']) : '';
+        Event::getInstance()->addProvider(new class implements ListenerProviderInterface
+        {
+            public function getListenersForEvent(object $event): iterable
+            {
+                foreach (Config::get('listen', []) as $key => $value) {
+                    if (is_a($event, $key)) {
+                        if (is_callable($value)) {
+                            yield function ($event) use ($key, $value) {
+                                Framework::execute($value, [
+                                    $key => $event,
+                                ]);
+                            };
+                        }
+                    }
+                }
+                foreach (App::allActive() as $appname) {
+                    foreach (Config::get('listen@' . $appname, []) as $key => $value) {
+                        if (is_a($event, $key)) {
+                            if (is_callable($value)) {
+                                yield function ($event) use ($key, $value) {
+                                    Framework::execute($value, [
+                                        $key => $event,
+                                    ]);
+                                };
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    private static function initApp()
+    {
+        $root = dirname((new ReflectionClass(ClassLoader::class))->getFileName(), 3);
+        if (file_exists($root . '/vendor/composer/installed.json')) {
+            foreach (json_decode(file_get_contents($root . '/vendor/composer/installed.json'), true)['packages'] as $pkg) {
+                if ($pkg['type'] != 'php94') {
+                    continue;
+                }
+                App::add($pkg['name']);
+            }
         }
-        $res = Router::dispatch(substr($uri->getPath(), strlen($base)));
-        if ($res) {
-            $class = $res[0] ?? '';
+
+        spl_autoload_register(function (string $class) use ($root) {
             $paths = explode('\\', $class);
-            if (isset($paths[4]) && $paths[0] == 'App' && $paths[3] == 'Http') {
-                $appname = strtolower(preg_replace('/([A-Z])/', "-$1", lcfirst($paths[1]) . '/' . lcfirst($paths[2])));
-                return ServerRequest::fromGlobals()
-                    ->withQueryParams(array_merge($_GET, $res[1]))
-                    ->withAttribute('appname', $appname)
-                    ->withAttribute('handler', $class);
-            }
-        } else {
-            $paths = explode('/', $uri->getPath());
-            $pathx = explode('/', $_SERVER['SCRIPT_NAME']);
-            foreach ($pathx as $key => $value) {
-                if (isset($paths[$key]) && ($paths[$key] == $value)) {
-                    unset($paths[$key]);
+            if (isset($paths[3]) && $paths[0] == 'App') {
+                $appname = strtolower(preg_replace('/([A-Z])/', "-$1", lcfirst($paths[1])))
+                    . '/'
+                    . strtolower(preg_replace('/([A-Z])/', "-$1", lcfirst($paths[2])));
+                if (App::isActive($appname)) {
+                    $file = $root . '/app/' . $appname
+                        . '/src/library/'
+                        . str_replace('\\', '/', substr($class, strlen($paths[0]) + strlen($paths[1]) + strlen($paths[2]) + 3))
+                        . '.php';
+                    if (file_exists($file)) {
+                        include $file;
+                    }
                 }
             }
-            if (count($paths) >= 3) {
-                array_splice($paths, 0, 0, 'App');
-                array_splice($paths, 3, 0, 'Http');
-                $class = str_replace(['-'], [''], ucwords(implode('\\', $paths), '\\-'));
-                $paths = explode('\\', $class);
-                if (isset($paths[4]) && $paths[0] == 'App' && $paths[3] == 'Http') {
-                    $appname = strtolower(preg_replace('/([A-Z])/', "-$1", lcfirst($paths[1]) . '/' . lcfirst($paths[2])));
-                    return ServerRequest::fromGlobals()
-                        ->withAttribute('appname', $appname)
-                        ->withAttribute('handler', $class);
-                }
+        });
+
+        foreach (glob($root . '/app/*/*/composer.json') as $file) {
+            $appname = substr(substr($file, strlen($root . '/app/')), 0, -strlen('/composer.json'));
+            if (App::has($appname)) {
+                continue;
             }
+            App::add($appname, $root . '/app/' . $appname);
         }
-        return ServerRequest::fromGlobals();
+    }
+
+    private static function initLang()
+    {
+        if (isset($_SERVER['HTTP_ACCEPT_LANGUAGE'])) {
+            $languages = explode(',', $_SERVER['HTTP_ACCEPT_LANGUAGE']);
+            $xlang = [];
+            foreach ($languages as $language) {
+                $parts = explode(';q=', trim($language));
+                $fullLanguage = trim($parts[0]);
+                if (preg_match('/^[a-zA-Z0-9_-]+$/', $fullLanguage)) {
+                    $quality = (isset($parts[1])) ? trim($parts[1]) : '1';
+                    $xlang[$fullLanguage] = floatval($quality);
+                }
+            }
+            arsort($xlang);
+            Lang::setLangs(...array_keys($xlang));
+        }
+
+        Lang::addFinder(function (string $key): ?string {
+            static $langs = [];
+            if (strpos($key, '@')) {
+                list($index, $appname) = explode('@', $key);
+                if ($appname && $index && App::isActive($appname)) {
+                    $dir = App::getDir($appname);
+                    foreach (Lang::getLangs() as $lang) {
+                        if (!isset($langs[$appname . '.' . $lang])) {
+                            $langs[$appname . '.' . $lang] = [];
+                            $fullname = $dir . '/src/lang/' . $lang . '.php';
+                            if (is_file($fullname)) {
+                                $tmp = self::requireFile($fullname);
+                                if (is_array($tmp)) {
+                                    $langs[$appname . '.' . $lang] = $tmp;
+                                }
+                            }
+                        }
+                        if (isset($langs[$appname . '.' . $lang][$index])) {
+                            return $langs[$appname . '.' . $lang][$index];
+                        }
+                    }
+                }
+            } else {
+                $root = dirname((new ReflectionClass(ClassLoader::class))->getFileName(), 3);
+                foreach (Lang::getLangs() as $lang) {
+                    if (!isset($langs[$lang])) {
+                        $langs[$lang] = [];
+                        $fullname = $root . '/lang/' . $lang . '.php';
+                        if (is_file($fullname)) {
+                            $tmp = self::requireFile($fullname);
+                            if (is_array($tmp)) {
+                                $langs[$lang] = $tmp;
+                            }
+                        }
+                    }
+                    if (isset($langs[$lang][$key])) {
+                        return $langs[$lang][$key];
+                    }
+                }
+            }
+            return null;
+        });
+    }
+
+    private static function requireFile(string $file)
+    {
+        static $loader;
+        if (!$loader) {
+            $loader = new class()
+            {
+                public function load(string $file)
+                {
+                    return require $file;
+                }
+            };
+        }
+        return $loader->load($file);
     }
 }

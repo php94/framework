@@ -2,9 +2,8 @@
 
 declare(strict_types=1);
 
-namespace PHP94\Help;
+namespace PHP94;
 
-use PHP94\Facade\Factory;
 use Psr\Http\Message\ResponseInterface;
 
 class Response

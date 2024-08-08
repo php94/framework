@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace PHP94\Help;
+namespace PHP94;
 
 use Composer\DependencyResolver\Operation\InstallOperation;
 use Composer\DependencyResolver\Operation\UninstallOperation;

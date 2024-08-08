@@ -5,104 +5,79 @@ declare(strict_types=1);
 namespace PHP94;
 
 use Composer\Autoload\ClassLoader;
+use Composer\InstalledVersions;
 use Exception;
 use ReflectionClass;
 
 class App
 {
-    private $lists = [];
+    private static $lists = [];
 
-    public function __construct()
+    public static function add(string $appname, string $dir = null): bool
     {
         $root = dirname((new ReflectionClass(ClassLoader::class))->getFileName(), 3);
-        if (file_exists($root . '/vendor/composer/installed.json')) {
-            foreach (json_decode(file_get_contents($root . '/vendor/composer/installed.json'), true)['packages'] as $pkg) {
-                if ($pkg['type'] != 'php94') {
-                    continue;
-                }
-                $this->lists[$pkg['name']] = [
-                    'dir' => $root . '/vendor/' . $pkg['name'],
-                    'core' => true,
-                    'installed' => true,
-                    'disabled' => file_exists($root . '/config/' . $pkg['name'] . '/disabled.lock'),
-                ];
-            }
-        }
-
-        spl_autoload_register(function (string $class) use ($root) {
-            $paths = explode('\\', $class);
-            if (isset($paths[3]) && $paths[0] == 'App') {
-                $appname = strtolower(preg_replace('/([A-Z])/', "-$1", lcfirst($paths[1])))
-                    . '/'
-                    . strtolower(preg_replace('/([A-Z])/', "-$1", lcfirst($paths[2])));
-                if ($this->isActive($appname)) {
-                    $file = $root . '/app/' . $appname
-                        . '/src/library/'
-                        . str_replace('\\', '/', substr($class, strlen($paths[0]) + strlen($paths[1]) + strlen($paths[2]) + 3))
-                        . '.php';
-                    if (file_exists($file)) {
-                        include $file;
-                    }
-                }
-            }
-        });
-
-        foreach (glob($root . '/app/*/*/composer.json') as $file) {
-            $appname = substr(substr($file, strlen($root . '/app/')), 0, -strlen('/composer.json'));
-            if (isset($this->lists[$appname])) {
-                continue;
-            }
-            $this->lists[$appname] = [
-                'dir' => $root . '/app/' . $appname,
+        if (InstalledVersions::isInstalled($appname)) {
+            self::$lists[$appname] = [
+                'dir' => $root . '/vendor/' . $appname,
+                'core' => true,
+                'installed' => true,
+                'disabled' => file_exists($root . '/config/' . $appname . '/disabled.lock'),
+            ];
+            return true;
+        } elseif (is_string($dir) && is_dir($dir)) {
+            self::$lists[$appname] = [
+                'dir' => $dir,
                 'core' => false,
                 'installed' => file_exists($root . '/config/' . $appname . '/installed.lock'),
                 'disabled' => file_exists($root . '/config/' . $appname . '/disabled.lock'),
             ];
+            return true;
         }
+        return false;
     }
 
-    public function has(string $appname): bool
+    public static function has(string $appname): bool
     {
-        return isset($this->lists[$appname]);
+        return isset(self::$lists[$appname]);
     }
 
-    public function getDir(string $appname): string
+    public static function getDir(string $appname): string
     {
-        if (!$this->has($appname)) {
+        if (!self::has($appname)) {
             throw new Exception($appname . ' is not found!');
         }
-        return $this->lists[$appname]['dir'];
+        return self::$lists[$appname]['dir'];
     }
 
-    public function isInstalled(string $appname): bool
+    public static function isInstalled(string $appname): bool
     {
-        return isset($this->lists[$appname]) && $this->lists[$appname]['installed'];
+        return isset(self::$lists[$appname]) && self::$lists[$appname]['installed'];
     }
 
-    public function isDisabled(string $appname): bool
+    public static function isDisabled(string $appname): bool
     {
-        return isset($this->lists[$appname]) && $this->lists[$appname]['disabled'];
+        return isset(self::$lists[$appname]) && self::$lists[$appname]['disabled'];
     }
 
-    public function isCore(string $appname): bool
+    public static function isCore(string $appname): bool
     {
-        return isset($this->lists[$appname]) && $this->lists[$appname]['core'];
+        return isset(self::$lists[$appname]) && self::$lists[$appname]['core'];
     }
 
-    public function isActive(string $appname): bool
+    public static function isActive(string $appname): bool
     {
-        return $this->isInstalled($appname) && !$this->isDisabled($appname);
+        return self::isInstalled($appname) && !self::isDisabled($appname);
     }
 
-    public function all(): array
+    public static function all(): array
     {
-        return array_keys($this->lists);
+        return array_keys(self::$lists);
     }
 
-    public function allActive(): array
+    public static function allActive(): array
     {
         $res = [];
-        foreach ($this->lists as $key => $value) {
+        foreach (self::$lists as $key => $value) {
             if ($value['installed'] && !$value['disabled']) {
                 $res[] = $key;
             }

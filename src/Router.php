@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace PHP94\Facade;
+namespace PHP94;
 
 use PHP94\Router\Router as RouterRouter;
 

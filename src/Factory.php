@@ -2,51 +2,51 @@
 
 declare(strict_types=1);
 
-namespace PHP94\Facade;
+namespace PHP94;
 
-use PHP94\Factory\Factory as FactoryFactory;
+use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Message\RequestInterface;
+use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestFactoryInterface;
 use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Http\Message\StreamInterface;
+use Psr\Http\Message\UploadedFileFactoryInterface;
 use Psr\Http\Message\UploadedFileInterface;
+use Psr\Http\Message\UriFactoryInterface;
 use Psr\Http\Message\UriInterface;
 
 class Factory
 {
-    public static function getInstance(): FactoryFactory
-    {
-        return Container::get(FactoryFactory::class);
-    }
-
     public static function createRequest(string $method, $uri): RequestInterface
     {
-        return self::getInstance()->createRequest($method, $uri);
+        return Container::get(RequestFactoryInterface::class)->createRequest($method, $uri);
     }
 
     public static function createResponse(int $code = 200, string $reasonPhrase = ''): ResponseInterface
     {
-        return self::getInstance()->createResponse($code, $reasonPhrase);
+        return Container::get(ResponseFactoryInterface::class)->createResponse($code, $reasonPhrase);
     }
 
     public static function createServerRequest(string $method, $uri, array $serverParams = []): ServerRequestInterface
     {
-        return self::getInstance()->createServerRequest($method, $uri, $serverParams);
+        return Container::get(ServerRequestFactoryInterface::class)->createServerRequest($method, $uri, $serverParams);
     }
 
     public static function createStream(string $content = ''): StreamInterface
     {
-        return self::getInstance()->createStream($content);
+        return Container::get(StreamFactoryInterface::class)->createStream($content);
     }
 
     public static function createStreamFromFile(string $file, string $mode = 'r'): StreamInterface
     {
-        return self::getInstance()->createStreamFromFile($file, $mode);
+        return Container::get(StreamFactoryInterface::class)->createStreamFromFile($file, $mode);
     }
 
     public static function createStreamFromResource($resource): StreamInterface
     {
-        return self::getInstance()->createStreamFromResource($resource);
+        return Container::get(StreamFactoryInterface::class)->createStreamFromResource($resource);
     }
 
     public static function createUploadedFile(
@@ -56,11 +56,11 @@ class Factory
         string $clientFilename = null,
         string $clientMediaType = null
     ): UploadedFileInterface {
-        return self::getInstance()->createUploadedFile($stream, $size, $error, $clientFilename, $clientMediaType);
+        return Container::get(UploadedFileFactoryInterface::class)->createUploadedFile($stream, $size, $error, $clientFilename, $clientMediaType);
     }
 
     public static function createUri(string $uri = ''): UriInterface
     {
-        return self::getInstance()->createUri($uri);
+        return Container::get(UriFactoryInterface::class)->createUri($uri);
     }
 }

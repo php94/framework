@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace PHP94\Help;
+namespace PHP94;
 
-use PHP94\Facade\Container;
-use PHP94\Facade\Framework;
+use GuzzleHttp\Psr7\ServerRequest;
+use Psr\Http\Message\ServerRequestInterface;
 
 class Request
 {
@@ -101,6 +101,53 @@ class Request
         return self::getValue(self::getServerRequest()->getHeaders(), self::fieldFilter($field), $default);
     }
 
+    public static function getServerRequest(): ServerRequestInterface
+    {
+        static $serverRequest;
+        if (!$serverRequest) {
+            $serverRequest = ServerRequest::fromGlobals();
+            $path = ServerRequest::getUriFromGlobals()->getPath();
+            if (strpos($_SERVER['REQUEST_URI'] ?? '', $_SERVER['SCRIPT_NAME']) === 0) {
+                $base = $_SERVER['SCRIPT_NAME'];
+            } else {
+                $base = strlen(dirname($_SERVER['SCRIPT_NAME'])) > 1 ? dirname($_SERVER['SCRIPT_NAME']) : '';
+            }
+            $res = Router::dispatch(substr($path, strlen($base)));
+            if ($res) {
+                $class = $res[0] ?? '';
+                $paths = explode('\\', $class);
+                if (isset($paths[4]) && $paths[0] == 'App' && $paths[3] == 'Http') {
+                    $appname = strtolower(preg_replace('/([A-Z])/', "-$1", lcfirst($paths[1]) . '/' . lcfirst($paths[2])));
+                    $serverRequest = $serverRequest
+                        ->withQueryParams(array_merge($_GET, $res[1]))
+                        ->withAttribute('appname', $appname)
+                        ->withAttribute('handler', $class);
+                }
+            } else {
+                $paths = explode('/', $path);
+                $pathx = explode('/', $_SERVER['SCRIPT_NAME']);
+                foreach ($pathx as $key => $value) {
+                    if (isset($paths[$key]) && ($paths[$key] == $value)) {
+                        unset($paths[$key]);
+                    }
+                }
+                if (count($paths) >= 3) {
+                    array_splice($paths, 0, 0, 'App');
+                    array_splice($paths, 3, 0, 'Http');
+                    $class = str_replace(['-'], [''], ucwords(implode('\\', $paths), '\\-'));
+                    $paths = explode('\\', $class);
+                    if (isset($paths[4]) && $paths[0] == 'App' && $paths[3] == 'Http') {
+                        $appname = strtolower(preg_replace('/([A-Z])/', "-$1", lcfirst($paths[1]) . '/' . lcfirst($paths[2])));
+                        $serverRequest = $serverRequest
+                            ->withAttribute('appname', $appname)
+                            ->withAttribute('handler', $class);
+                    }
+                }
+            }
+        }
+        return $serverRequest;
+    }
+
     private static function isSetValue(array $data = [], array $arr = []): bool
     {
         $key = array_shift($arr);
@@ -139,10 +186,5 @@ class Request
                 return strlen($val) > 0 ? true : false;
             }
         );
-    }
-
-    private static function getServerRequest()
-    {
-        return Framework::getServerRequest();
     }
 }
