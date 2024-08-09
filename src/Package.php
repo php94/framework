@@ -68,7 +68,7 @@ return [
     ],
 ];
 str;
-                $database_file = dirname(__DIR__, 5) . '/config/database.php';
+                $database_file = dirname(__DIR__, 4) . '/config/database.php';
                 if (!file_exists($database_file)) {
                     if (!is_dir(dirname($database_file))) {
                         mkdir(dirname($database_file), 0755, true);
@@ -146,7 +146,7 @@ str;
 
     private static function getCallable(string $package_name, string $action): ?callable
     {
-        $file = dirname(__DIR__, 4) . '/' . $package_name . '/src/config/package.php';
+        $file = dirname(__DIR__, 3) . '/' . $package_name . '/src/config/package.php';
         if (file_exists($file)) {
             $cfg = self::requireFile($file);
             if (isset($cfg[$action]) && is_callable($cfg[$action])) {
@@ -159,7 +159,7 @@ str;
     public static function querySql(string $sql)
     {
         $prefix = 'prefix_';
-        $root = dirname(__DIR__, 5);
+        $root = dirname(__DIR__, 4);
         $cfg_file = $root . '/config/database.php';
         if (!file_exists($cfg_file)) {
             throw new Exception('无数据库配置文件：' . $cfg_file);
@@ -183,7 +183,7 @@ str;
     public static function execSql(string $sql)
     {
         $prefix = 'prefix_';
-        $root = dirname(__DIR__, 5);
+        $root = dirname(__DIR__, 4);
         $cfg_file = $root . '/config/database.php';
         if (!file_exists($cfg_file)) {
             throw new Exception('无数据库配置文件：' . $cfg_file);
