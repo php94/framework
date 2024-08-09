@@ -18,7 +18,7 @@ use PHP94\Factory\ServerRequestFactory;
 use PHP94\Factory\StreamFactory;
 use PHP94\Factory\UploadedFileFactory;
 use PHP94\Factory\UriFactory;
-use PHP94\Logger\Logger;
+use PHP94\Logger\Logger as LoggerLogger;
 use PHP94\Template\Template;
 use Psr\Container\ContainerInterface;
 use Psr\EventDispatcher\EventDispatcherInterface;
@@ -44,10 +44,27 @@ class Framework
             throw new ErrorException($errstr, 0, $errno, $errfile, $errline);
         });
 
+        self::initApp();
+        self::initContainer();
+        Event::dispatch(Container::getInstance());
+        Event::dispatch(Router::getInstance());
+        Event::dispatch(Handler::getInstance());
+        $response = Handler::getInstance()->handle(Request::getServerRequest());
+        (new Emitter())->emit($response);
+    }
+
+    public static function execute(callable $callable, array $params = [])
+    {
+        $args = Container::reflectArguments($callable, $params);
+        return call_user_func($callable, ...$args);
+    }
+
+    private static function initContainer()
+    {
         $container = Container::getInstance();
         foreach ([
             ContainerContainer::class => $container,
-            LoggerInterface::class => Logger::class,
+            LoggerInterface::class => LoggerLogger::class,
             CacheInterface::class => NullCache::class,
             ResponseFactoryInterface::class => ResponseFactory::class,
             UriFactoryInterface::class => UriFactory::class,
@@ -58,6 +75,52 @@ class Framework
             ContainerInterface::class => ContainerContainer::class,
             EventDispatcherInterface::class => EventEvent::class,
             ListenerProviderInterface::class => EventEvent::class,
+            EventEvent::class => function (
+                EventEvent $event
+            ) {
+                $event->addProvider(new class implements ListenerProviderInterface
+                {
+                    public function getListenersForEvent(object $event): iterable
+                    {
+                        $files = [];
+                        $root = dirname((new ReflectionClass(ClassLoader::class))->getFileName(), 3);
+                        if (file_exists($root . '/config/listen.php')) {
+                            $files[] = $root . '/config/listen.php';
+                        }
+                        foreach (App::allActive() as $appname) {
+                            if (file_exists(App::getDir($appname) . '/src/config/listen.php')) {
+                                $files[] = App::getDir($appname) . '/src/config/listen.php';
+                            }
+                        }
+                        foreach ($files as $file) {
+                            $listens = self::requireFile($file);
+                            if (is_array($listens)) {
+                                foreach ($listens as $key => $value) {
+                                    if (is_a($event, $key)) {
+                                        if (is_callable($value)) {
+                                            yield $value;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    private static function requireFile(string $file)
+                    {
+                        static $loader;
+                        if (!$loader) {
+                            $loader = new class()
+                            {
+                                public function load(string $file)
+                                {
+                                    return require $file;
+                                }
+                            };
+                        }
+                        return $loader->load($file);
+                    }
+                });
+            },
             Template::class => function (
                 Template $template
             ) {
@@ -84,14 +147,14 @@ class Framework
                     return null;
                 });
                 $template->assign([
-                    'db' => Container::get(Db::class),
-                    'cache' => Container::get(Cache::class),
-                    'logger' => Container::get(Logger::class),
-                    'router' => Container::get(Router::class),
-                    'config' => Container::get(Config::class),
-                    'session' => Container::get(Session::class),
-                    'request' => Container::get(Request::class),
-                    'lang' => Container::get(Lang::class),
+                    'db' => self::lazyLoad(Db::class),
+                    'cache' => self::lazyLoad(Cache::class),
+                    'logger' => self::lazyLoad(Logger::class),
+                    'router' => self::lazyLoad(Router::class),
+                    'config' => self::lazyLoad(Config::class),
+                    'session' => self::lazyLoad(Session::class),
+                    'request' => self::lazyLoad(Request::class),
+                    'lang' => self::lazyLoad(Lang::class),
                     'template' => $template,
                     'container' => Container::getInstance(),
                 ]);
@@ -147,54 +210,6 @@ class Framework
                 throw new Exception('the option ' . $id . ' cannot config..');
             }
         }
-        self::initApp();
-        self::initLang();
-        self::initEvent();
-        Event::dispatch(Container::getInstance());
-        Event::dispatch(Router::getInstance());
-        Event::dispatch(Handler::getInstance());
-        $response = Handler::getInstance()->handle(Request::getServerRequest());
-        (new Emitter())->emit($response);
-    }
-
-    public static function execute(callable $callable, array $params = [])
-    {
-        $args = Container::reflectArguments($callable, $params);
-        return call_user_func($callable, ...$args);
-    }
-
-    private static function initEvent()
-    {
-        Event::getInstance()->addProvider(new class implements ListenerProviderInterface
-        {
-            public function getListenersForEvent(object $event): iterable
-            {
-                foreach (Config::get('listen', []) as $key => $value) {
-                    if (is_a($event, $key)) {
-                        if (is_callable($value)) {
-                            yield function ($event) use ($key, $value) {
-                                Framework::execute($value, [
-                                    $key => $event,
-                                ]);
-                            };
-                        }
-                    }
-                }
-                foreach (App::allActive() as $appname) {
-                    foreach (Config::get('listen@' . $appname, []) as $key => $value) {
-                        if (is_a($event, $key)) {
-                            if (is_callable($value)) {
-                                yield function ($event) use ($key, $value) {
-                                    Framework::execute($value, [
-                                        $key => $event,
-                                    ]);
-                                };
-                            }
-                        }
-                    }
-                }
-            }
-        });
     }
 
     private static function initApp()
@@ -236,79 +251,19 @@ class Framework
         }
     }
 
-    private static function initLang()
+    private static function lazyLoad(string $cls)
     {
-        if (isset($_SERVER['HTTP_ACCEPT_LANGUAGE'])) {
-            $languages = explode(',', $_SERVER['HTTP_ACCEPT_LANGUAGE']);
-            $xlang = [];
-            foreach ($languages as $language) {
-                $parts = explode(';q=', trim($language));
-                $fullLanguage = trim($parts[0]);
-                if (preg_match('/^[a-zA-Z0-9_-]+$/', $fullLanguage)) {
-                    $quality = (isset($parts[1])) ? trim($parts[1]) : '1';
-                    $xlang[$fullLanguage] = floatval($quality);
-                }
-            }
-            arsort($xlang);
-            Lang::setLangs(...array_keys($xlang));
-        }
-
-        Lang::addFinder(function (string $key): ?string {
-            static $langs = [];
-            if (strpos($key, '@')) {
-                list($index, $appname) = explode('@', $key);
-                if ($appname && $index && App::isActive($appname)) {
-                    $dir = App::getDir($appname);
-                    foreach (Lang::getLangs() as $lang) {
-                        if (!isset($langs[$appname . '.' . $lang])) {
-                            $langs[$appname . '.' . $lang] = [];
-                            $fullname = $dir . '/src/lang/' . $lang . '.php';
-                            if (is_file($fullname)) {
-                                $tmp = self::requireFile($fullname);
-                                if (is_array($tmp)) {
-                                    $langs[$appname . '.' . $lang] = $tmp;
-                                }
-                            }
-                        }
-                        if (isset($langs[$appname . '.' . $lang][$index])) {
-                            return $langs[$appname . '.' . $lang][$index];
-                        }
-                    }
-                }
-            } else {
-                $root = dirname((new ReflectionClass(ClassLoader::class))->getFileName(), 3);
-                foreach (Lang::getLangs() as $lang) {
-                    if (!isset($langs[$lang])) {
-                        $langs[$lang] = [];
-                        $fullname = $root . '/lang/' . $lang . '.php';
-                        if (is_file($fullname)) {
-                            $tmp = self::requireFile($fullname);
-                            if (is_array($tmp)) {
-                                $langs[$lang] = $tmp;
-                            }
-                        }
-                    }
-                    if (isset($langs[$lang][$key])) {
-                        return $langs[$lang][$key];
-                    }
-                }
-            }
-            return null;
-        });
-    }
-
-    private static function requireFile(string $file)
-    {
-        static $loader;
-        if (!$loader) {
-            $loader = new class()
+        return new class($cls)
+        {
+            private $cls;
+            public function __construct(string $cls)
             {
-                public function load(string $file)
-                {
-                    return require $file;
-                }
-            };
-        }
-        return $loader->load($file);
+                $this->cls = $cls;
+            }
+            public function __call($name, $arguments)
+            {
+                return call_user_func($this->cls . '::' . $name, ...$arguments);
+            }
+        };
     }
 }
