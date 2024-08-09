@@ -13,7 +13,9 @@
         "php94/logger": "^1.0",
         "php94/router": "^1.0",
         "php94/template": "^1.0",
-        "catfan/medoo": "^2.1"
+        "catfan/medoo": "^2.1",
+        "psr/http-server-handler": "^1.0",
+        "psr/http-server-middleware": "^1.0"
     },
     "autoload": {
         "psr-4": {
