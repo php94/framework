@@ -62,111 +62,112 @@ class Framework
     private static function initContainer()
     {
         $container = Container::getInstance();
-        foreach ([
-            ContainerContainer::class => $container,
-            LoggerInterface::class => LoggerLogger::class,
-            CacheInterface::class => NullCache::class,
-            ResponseFactoryInterface::class => ResponseFactory::class,
-            UriFactoryInterface::class => UriFactory::class,
-            ServerRequestFactoryInterface::class => ServerRequestFactory::class,
-            RequestFactoryInterface::class => RequestFactory::class,
-            StreamFactoryInterface::class => StreamFactory::class,
-            UploadedFileFactoryInterface::class => UploadedFileFactory::class,
-            ContainerInterface::class => ContainerContainer::class,
-            EventDispatcherInterface::class => EventEvent::class,
-            ListenerProviderInterface::class => EventEvent::class,
-            EventEvent::class => function (
-                EventEvent $event
-            ) {
-                $event->addProvider(new class implements ListenerProviderInterface
-                {
-                    public function getListenersForEvent(object $event): iterable
+        foreach (
+            [
+                ContainerContainer::class => $container,
+                LoggerInterface::class => LoggerLogger::class,
+                CacheInterface::class => NullCache::class,
+                ResponseFactoryInterface::class => ResponseFactory::class,
+                UriFactoryInterface::class => UriFactory::class,
+                ServerRequestFactoryInterface::class => ServerRequestFactory::class,
+                RequestFactoryInterface::class => RequestFactory::class,
+                StreamFactoryInterface::class => StreamFactory::class,
+                UploadedFileFactoryInterface::class => UploadedFileFactory::class,
+                ContainerInterface::class => ContainerContainer::class,
+                EventDispatcherInterface::class => EventEvent::class,
+                ListenerProviderInterface::class => EventEvent::class,
+                EventEvent::class => function (
+                    EventEvent $event
+                ) {
+                    $event->addProvider(new class implements ListenerProviderInterface
                     {
-                        $files = [];
-                        $root = dirname((new ReflectionClass(ClassLoader::class))->getFileName(), 3);
-                        if (file_exists($root . '/config/listen.php')) {
-                            $files[] = $root . '/config/listen.php';
-                        }
-                        foreach (App::allActive() as $appname) {
-                            if (file_exists(App::getDir($appname) . '/src/config/listen.php')) {
-                                $files[] = App::getDir($appname) . '/src/config/listen.php';
+                        public function getListenersForEvent(object $event): iterable
+                        {
+                            $files = [];
+                            $root = dirname((new ReflectionClass(ClassLoader::class))->getFileName(), 3);
+                            if (file_exists($root . '/config/listen.php')) {
+                                $files[] = $root . '/config/listen.php';
                             }
-                        }
-                        foreach ($files as $file) {
-                            $listens = self::requireFile($file);
-                            if (is_array($listens)) {
-                                foreach ($listens as $key => $value) {
-                                    if (is_a($event, $key)) {
-                                        if (is_callable($value)) {
-                                            yield $value;
+                            foreach (App::all() as $appname) {
+                                if (file_exists(App::getDir($appname) . '/src/config/listen.php')) {
+                                    $files[] = App::getDir($appname) . '/src/config/listen.php';
+                                }
+                            }
+                            foreach ($files as $file) {
+                                $listens = self::requireFile($file);
+                                if (is_array($listens)) {
+                                    foreach ($listens as $key => $value) {
+                                        if (is_a($event, $key)) {
+                                            if (is_callable($value)) {
+                                                yield $value;
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
-                    }
-                    private static function requireFile(string $file)
-                    {
-                        static $loader;
-                        if (!$loader) {
-                            $loader = new class()
-                            {
-                                public function load(string $file)
+                        private static function requireFile(string $file)
+                        {
+                            static $loader;
+                            if (!$loader) {
+                                $loader = new class()
                                 {
-                                    return require $file;
+                                    public function load(string $file)
+                                    {
+                                        return require $file;
+                                    }
+                                };
+                            }
+                            return $loader->load($file);
+                        }
+                    });
+                },
+                Template::class => function (
+                    Template $template
+                ) {
+                    $template->setCache(Cache::getInstance());
+                    $template->addFinder(function (string $tpl): ?string {
+                        if (strpos($tpl, '@')) {
+                            list($file, $appname) = explode('@', $tpl);
+                            if ($appname && $file && App::has($appname)) {
+                                $dir = App::getDir($appname);
+                                $fullname = $dir . '/src/template/' . $file;
+                                if (is_file($fullname)) {
+                                    return file_get_contents($fullname);
                                 }
-                            };
-                        }
-                        return $loader->load($file);
-                    }
-                });
-            },
-            Template::class => function (
-                Template $template
-            ) {
-                $template->setCache(Cache::getInstance());
-                $template->addFinder(function (string $tpl): ?string {
-                    if (strpos($tpl, '@')) {
-                        list($file, $appname) = explode('@', $tpl);
-                        if ($appname && $file && App::isActive($appname)) {
-                            $dir = App::getDir($appname);
-                            $fullname = $dir . '/src/template/' . $file;
-                            if (is_file($fullname)) {
-                                return file_get_contents($fullname);
-                            }
-                            $fullname = $dir . '/src/template/' . $file . '.php';
-                            if (is_file($fullname)) {
-                                return file_get_contents($fullname);
-                            }
-                            $fullname = $dir . '/src/template/' . $file . '.tpl';
-                            if (is_file($fullname)) {
-                                return file_get_contents($fullname);
+                                $fullname = $dir . '/src/template/' . $file . '.php';
+                                if (is_file($fullname)) {
+                                    return file_get_contents($fullname);
+                                }
+                                $fullname = $dir . '/src/template/' . $file . '.tpl';
+                                if (is_file($fullname)) {
+                                    return file_get_contents($fullname);
+                                }
                             }
                         }
-                    }
-                    return null;
-                });
-                $template->assign([
-                    'db' => self::lazyLoad(Db::class),
-                    'cache' => self::lazyLoad(Cache::class),
-                    'logger' => self::lazyLoad(Logger::class),
-                    'router' => self::lazyLoad(Router::class),
-                    'config' => self::lazyLoad(Config::class),
-                    'session' => self::lazyLoad(Session::class),
-                    'request' => self::lazyLoad(Request::class),
-                    'lang' => self::lazyLoad(Lang::class),
-                    'template' => $template,
-                    'container' => Container::getInstance(),
-                ]);
-                $template->extend('/\{cache\s*(.*)\s*\}([\s\S]*)\{\/cache\}/Ui', function ($matchs) {
-                    $params = array_filter(explode(',', trim($matchs[1])));
-                    if (!isset($params[0])) {
-                        $params[0] = 3600;
-                    }
-                    if (!isset($params[1])) {
-                        $params[1] = 'tpl_extend_cache_' . md5($matchs[2]);
-                    }
-                    return '<?php echo call_user_func(function($args){
+                        return null;
+                    });
+                    $template->assign([
+                        'db' => self::lazyLoad(Db::class),
+                        'cache' => self::lazyLoad(Cache::class),
+                        'logger' => self::lazyLoad(Logger::class),
+                        'router' => self::lazyLoad(Router::class),
+                        'config' => self::lazyLoad(Config::class),
+                        'session' => self::lazyLoad(Session::class),
+                        'request' => self::lazyLoad(Request::class),
+                        'lang' => self::lazyLoad(Lang::class),
+                        'template' => $template,
+                        'container' => Container::getInstance(),
+                    ]);
+                    $template->extend('/\{cache\s*(.*)\s*\}([\s\S]*)\{\/cache\}/Ui', function ($matchs) {
+                        $params = array_filter(explode(',', trim($matchs[1])));
+                        if (!isset($params[0])) {
+                            $params[0] = 3600;
+                        }
+                        if (!isset($params[1])) {
+                            $params[1] = 'tpl_extend_cache_' . md5($matchs[2]);
+                        }
+                        return '<?php echo call_user_func(function($args){
                         extract($args);
                         if (!$cache->has(\'' . $params[1] . '\')) {
                             $res = $template->renderFromString(base64_decode(\'' . base64_encode($matchs[2]) . '\'), $args, \'__' . $params[1] . '\');
@@ -176,24 +177,25 @@ class Framework
                         }
                         return $res;
                     }, get_defined_vars());?>';
-                });
-                $template->extend('/__ROOT__/Ui', function ($matchs) {
-                    if (
-                        (!empty($_SERVER['REQUEST_SCHEME']) && $_SERVER['REQUEST_SCHEME'] == 'https')
-                        || (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] == 'on')
-                        || (!empty($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == '443')
-                    ) {
-                        $schema = 'https';
-                    } else {
-                        $schema = 'http';
-                    }
-                    $script_name = '/' . implode('/', array_filter(explode('/', $_SERVER['SCRIPT_NAME'])));
-                    $root = strlen(dirname($script_name)) > 1 ? dirname($script_name) : '';
+                    });
+                    $template->extend('/__ROOT__/Ui', function ($matchs) {
+                        if (
+                            (!empty($_SERVER['REQUEST_SCHEME']) && $_SERVER['REQUEST_SCHEME'] == 'https')
+                            || (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] == 'on')
+                            || (!empty($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == '443')
+                        ) {
+                            $schema = 'https';
+                        } else {
+                            $schema = 'http';
+                        }
+                        $script_name = '/' . implode('/', array_filter(explode('/', $_SERVER['SCRIPT_NAME'])));
+                        $root = strlen(dirname($script_name)) > 1 ? dirname($script_name) : '';
 
-                    return $schema . '://' . $_SERVER['HTTP_HOST'] . $root;
-                });
-            },
-        ] as $id => $obj) {
+                        return $schema . '://' . $_SERVER['HTTP_HOST'] . $root;
+                    });
+                },
+            ] as $id => $obj
+        ) {
             if (is_array($obj)) {
                 Container::setArgument($id, $obj);
             } elseif (is_string($obj)) {
@@ -230,7 +232,7 @@ class Framework
                 $appname = strtolower(preg_replace('/([A-Z])/', "-$1", lcfirst($paths[1])))
                     . '/'
                     . strtolower(preg_replace('/([A-Z])/', "-$1", lcfirst($paths[2])));
-                if (App::isActive($appname)) {
+                if (App::has($appname)) {
                     $file = $root . '/app/' . $appname
                         . '/src/library/'
                         . str_replace('\\', '/', substr($class, strlen($paths[0]) + strlen($paths[1]) + strlen($paths[2]) + 3))
@@ -245,6 +247,12 @@ class Framework
         foreach (glob($root . '/app/*/*/composer.json') as $file) {
             $appname = substr(substr($file, strlen($root . '/app/')), 0, -strlen('/composer.json'));
             if (App::has($appname)) {
+                continue;
+            }
+            if (!file_exists($root . '/config/' . $appname . '/installed.lock')) {
+                continue;
+            }
+            if (file_exists($root . '/config/' . $appname . '/disabled.lock')) {
                 continue;
             }
             App::add($appname, $root . '/app/' . $appname);

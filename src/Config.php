@@ -84,12 +84,6 @@ class Config
             if (!App::has($appname)) {
                 throw new Exception('配置读取错误：应用' . $appname . '不存在~');
             }
-            if (!App::isInstalled($appname)) {
-                throw new Exception('配置读取错误：应用' . $appname . '未安装~');
-            }
-            if (App::isDisabled($appname)) {
-                throw new Exception('配置读取错误：应用' . $appname . '已禁用~');
-            }
             $file = App::getDir($appname) . '/src/config/' . $filename . '.php';
             if (file_exists($file)) {
                 $files[] = $file;
