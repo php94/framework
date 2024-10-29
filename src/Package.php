@@ -16,106 +16,57 @@ class Package
 {
     public static function onInstall(PackageEvent $event)
     {
-        /**
-         * @var InstallOperation $operation
-         */
-        $operation = $event->getOperation();
-        $package_name = $operation->getPackage()->getName();
-        if ($package_name == 'php94/db') {
-            self::exec(function () {
-                database:
-                fwrite(STDOUT, "请输入数据库地址(默认127.0.0.1)[server]：");
-                $server = trim((string) fgets(STDIN)) ?: '127.0.0.1';
-
-                fwrite(STDOUT, "请输入数据库端口(默认3306)[port]：");
-                $port = trim((string) fgets(STDIN)) ?: 3306;
-
-                fwrite(STDOUT, "请输入数据库名称[database]：");
-                $database = trim((string) fgets(STDIN));
-
-                fwrite(STDOUT, "请输入数据库账户(默认root)[username]：");
-                $username = trim((string) fgets(STDIN)) ?: 'root';
-
-                fwrite(STDOUT, "请输入数据库密码(默认空)[password]：");
-                $password = trim((string) fgets(STDIN)) ?: '';
-                fwrite(STDOUT, "地址：" . $server . " 端口：" . $port . " 数据库：" . $database . " 账户：" . $username . " 密码：" . $password . "\n");
-                fwrite(STDOUT, "重试请输[no] 确认[yes]：");
-                $input = trim((string) fgets(STDIN)) ?: 'yes';
-                if ($input != 'yes') {
-                    goto database;
-                }
-
-                $databasetpl = <<<'str'
-<?php
-return [
-    'master'=>[
-        'database_type' => 'mysql',
-        'database_name' => '{database}',
-        'server' => '{server}',
-        'username' => '{username}',
-        'password' => '{password}',
-        'charset' => 'utf8mb4',
-        'collation' => 'utf8mb4_general_ci',
-        'port' => '{port}',
-        'logging' => false,
-        'option' => [
-            \PDO::ATTR_CASE => \PDO::CASE_NATURAL,
-            \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
-            \PDO::ATTR_STRINGIFY_FETCHES => false,
-            \PDO::ATTR_EMULATE_PREPARES => false,
-        ],
-        'command' => ['SET SQL_MODE=ANSI_QUOTES'],
-    ],
-];
-str;
-                $database_file = dirname(__DIR__, 4) . '/config/database.php';
-                if (!file_exists($database_file)) {
-                    if (!is_dir(dirname($database_file))) {
-                        mkdir(dirname($database_file), 0755, true);
-                    }
-                }
-                file_put_contents($database_file, str_replace([
-                    '{server}',
-                    '{port}',
-                    '{database}',
-                    '{username}',
-                    '{password}',
-                ], [
-                    $server,
-                    $port,
-                    $database,
-                    $username,
-                    $password
-                ], $databasetpl));
-            });
-        }
-        if ($callable = self::getCallable($package_name, 'install')) {
-            self::exec($callable);
-        }
+        self::exec(function () use ($event) {
+            /**
+             * @var InstallOperation $operation
+             */
+            $operation = $event->getOperation();
+            $package_name = $operation->getPackage()->getName();
+            if ($package_name == 'php94/db') {
+                self::initDb();
+            }
+            $file = dirname(__DIR__, 3) . '/' . $package_name . '/src/package/install.php';
+            if (file_exists($file)) {
+                (function () {
+                    require $file;
+                })();
+            }
+        });
     }
 
     public static function onUnInstall(PackageEvent $event)
     {
-        /**
-         * @var UninstallOperation $operation
-         */
-        $operation = $event->getOperation();
-        $package_name = $operation->getPackage()->getName();
-        if ($callable = self::getCallable($package_name, 'unInstall')) {
-            self::exec($callable);
-        }
+        self::exec(function () use ($event) {
+            /**
+             * @var UninstallOperation $operation
+             */
+            $operation = $event->getOperation();
+            $package_name = $operation->getPackage()->getName();
+            $file = dirname(__DIR__, 3) . '/' . $package_name . '/src/package/uninstall.php';
+            if (file_exists($file)) {
+                (function () {
+                    require $file;
+                })();
+            }
+        });
     }
 
     public static function onUpdate(PackageEvent $event)
     {
-        /**
-         * @var UpdateOperation $operation
-         */
-        $operation = $event->getOperation();
-        $package_name = $operation->getTargetPackage()->getName();
-        if ($callable = self::getCallable($package_name, 'update')) {
-            self::exec($callable, $operation->getInitialPackage()->getVersion());
-        }
+        self::exec(function () use ($event) {
+            /**
+             * @var UpdateOperation $operation
+             */
+            $operation = $event->getOperation();
+            $package_name = $operation->getTargetPackage()->getName();
+            $file = dirname(__DIR__, 3) . '/' . $package_name . '/src/package/update.php';
+            if (file_exists($file)) {
+                $oldversion = $operation->getInitialPackage()->getVersion();
+                (function () use ($oldversion) {
+                    require $file;
+                })();
+            }
+        });
     }
 
     private static function exec(callable $callable, ...$params)
@@ -142,18 +93,6 @@ str;
                     break;
             }
         }
-    }
-
-    private static function getCallable(string $package_name, string $action): ?callable
-    {
-        $file = dirname(__DIR__, 3) . '/' . $package_name . '/src/config/package.php';
-        if (file_exists($file)) {
-            $cfg = self::requireFile($file);
-            if (isset($cfg[$action]) && is_callable($cfg[$action])) {
-                return $cfg[$action];
-            }
-        }
-        return null;
     }
 
     public static function querySql(string $sql)
@@ -220,5 +159,73 @@ str;
             };
         }
         return $loader->load($file);
+    }
+
+    private static function initDb()
+    {
+        database:
+        fwrite(STDOUT, "请输入数据库地址(默认127.0.0.1)[server]：");
+        $server = trim((string) fgets(STDIN)) ?: '127.0.0.1';
+
+        fwrite(STDOUT, "请输入数据库端口(默认3306)[port]：");
+        $port = trim((string) fgets(STDIN)) ?: 3306;
+
+        fwrite(STDOUT, "请输入数据库名称[database]：");
+        $database = trim((string) fgets(STDIN));
+
+        fwrite(STDOUT, "请输入数据库账户(默认root)[username]：");
+        $username = trim((string) fgets(STDIN)) ?: 'root';
+
+        fwrite(STDOUT, "请输入数据库密码(默认空)[password]：");
+        $password = trim((string) fgets(STDIN)) ?: '';
+        fwrite(STDOUT, "地址：" . $server . " 端口：" . $port . " 数据库：" . $database . " 账户：" . $username . " 密码：" . $password . "\n");
+        fwrite(STDOUT, "重试请输[no] 确认[yes]：");
+        $input = trim((string) fgets(STDIN)) ?: 'yes';
+        if ($input != 'yes') {
+            goto database;
+        }
+
+        $databasetpl = <<<'str'
+<?php
+return [
+    'master'=>[
+        'database_type' => 'mysql',
+        'database_name' => '{database}',
+        'server' => '{server}',
+        'username' => '{username}',
+        'password' => '{password}',
+        'charset' => 'utf8mb4',
+        'collation' => 'utf8mb4_general_ci',
+        'port' => '{port}',
+        'logging' => false,
+        'option' => [
+            \PDO::ATTR_CASE => \PDO::CASE_NATURAL,
+            \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+            \PDO::ATTR_STRINGIFY_FETCHES => false,
+            \PDO::ATTR_EMULATE_PREPARES => false,
+        ],
+        'command' => ['SET SQL_MODE=ANSI_QUOTES'],
+    ],
+];
+str;
+        $database_file = dirname(__DIR__, 4) . '/config/database.php';
+        if (!file_exists($database_file)) {
+            if (!is_dir(dirname($database_file))) {
+                mkdir(dirname($database_file), 0755, true);
+            }
+        }
+        file_put_contents($database_file, str_replace([
+            '{server}',
+            '{port}',
+            '{database}',
+            '{username}',
+            '{password}',
+        ], [
+            $server,
+            $port,
+            $database,
+            $username,
+            $password
+        ], $databasetpl));
     }
 }

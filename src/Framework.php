@@ -88,7 +88,7 @@ class Framework
                             if (file_exists($root . '/config/listen.php')) {
                                 $files[] = $root . '/config/listen.php';
                             }
-                            foreach (App::all() as $appname) {
+                            foreach (App::allActive() as $appname) {
                                 if (file_exists(App::getDir($appname) . '/src/config/listen.php')) {
                                     $files[] = App::getDir($appname) . '/src/config/listen.php';
                                 }
@@ -129,7 +129,7 @@ class Framework
                     $template->addFinder(function (string $tpl): ?string {
                         if (strpos($tpl, '@')) {
                             list($file, $appname) = explode('@', $tpl);
-                            if ($appname && $file && App::has($appname)) {
+                            if ($appname && $file && App::isActive($appname)) {
                                 $dir = App::getDir($appname);
                                 $fullname = $dir . '/src/template/' . $file;
                                 if (is_file($fullname)) {
@@ -232,14 +232,12 @@ class Framework
                 $appname = strtolower(preg_replace('/([A-Z])/', "-$1", lcfirst($paths[1])))
                     . '/'
                     . strtolower(preg_replace('/([A-Z])/', "-$1", lcfirst($paths[2])));
-                if (App::has($appname)) {
-                    $file = $root . '/app/' . $appname
-                        . '/src/library/'
-                        . str_replace('\\', '/', substr($class, strlen($paths[0]) + strlen($paths[1]) + strlen($paths[2]) + 3))
-                        . '.php';
-                    if (file_exists($file)) {
-                        include $file;
-                    }
+                $file = $root . '/app/' . $appname
+                    . '/src/library/'
+                    . str_replace('\\', '/', substr($class, strlen($paths[0]) + strlen($paths[1]) + strlen($paths[2]) + 3))
+                    . '.php';
+                if (file_exists($file)) {
+                    include $file;
                 }
             }
         });
@@ -247,12 +245,6 @@ class Framework
         foreach (glob($root . '/app/*/*/composer.json') as $file) {
             $appname = substr(substr($file, strlen($root . '/app/')), 0, -strlen('/composer.json'));
             if (App::has($appname)) {
-                continue;
-            }
-            if (!file_exists($root . '/config/' . $appname . '/installed.lock')) {
-                continue;
-            }
-            if (file_exists($root . '/config/' . $appname . '/disabled.lock')) {
                 continue;
             }
             App::add($appname, $root . '/app/' . $appname);

@@ -58,7 +58,7 @@ class Handler implements RequestHandlerInterface
     private function getRequestHandler(): ?RequestHandlerInterface
     {
         $appname = Request::getServerRequest()->getAttribute('appname', '');
-        if (App::has($appname)) {
+        if (App::isActive($appname)) {
             $cls = Request::getServerRequest()->getAttribute('handler', '');
             if (class_exists($cls) && is_subclass_of($cls, RequestHandlerInterface::class, true)) {
                 return Container::get($cls);

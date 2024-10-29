@@ -86,7 +86,7 @@ class Lang
             static $langs = [];
             if (strpos($key, '@')) {
                 list($index, $appname) = explode('@', $key);
-                if ($appname && $index && App::has($appname)) {
+                if ($appname && $index && App::isActive($appname)) {
                     $dir = App::getDir($appname);
                     foreach (self::getLangs() as $lang) {
                         if (!isset($langs[$appname . '.' . $lang])) {
