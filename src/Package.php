@@ -27,7 +27,7 @@ class Package
             }
             $file = dirname(__DIR__, 3) . '/' . $package_name . '/src/package/install.php';
             if (file_exists($file)) {
-                (function () {
+                (function () use ($file) {
                     require $file;
                 })();
             }
@@ -44,7 +44,7 @@ class Package
             $package_name = $operation->getPackage()->getName();
             $file = dirname(__DIR__, 3) . '/' . $package_name . '/src/package/uninstall.php';
             if (file_exists($file)) {
-                (function () {
+                (function () use ($file) {
                     require $file;
                 })();
             }
@@ -62,7 +62,7 @@ class Package
             $file = dirname(__DIR__, 3) . '/' . $package_name . '/src/package/update.php';
             if (file_exists($file)) {
                 $oldversion = $operation->getInitialPackage()->getVersion();
-                (function () use ($oldversion) {
+                (function () use ($file, $oldversion) {
                     require $file;
                 })();
             }
@@ -75,7 +75,7 @@ class Package
         try {
             $callable(...$params);
         } catch (Throwable $th) {
-            fwrite(STDOUT, "发生错误：" . $th->getMessage() . "\n");
+            fwrite(STDOUT, "发生错误：" . $th->getMessage() . " on " . $th->getFile() . "(" . $th->getLine() . ")" . "\n");
             fwrite(STDOUT, "重试请输[r] 忽略请输[y] 终止请输[q]：");
             $input = trim((string) fgets(STDIN));
             switch ($input) {
