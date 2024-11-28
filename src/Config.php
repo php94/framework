@@ -52,9 +52,12 @@ class Config
         if (!$paths && !is_array($value)) {
             throw new Exception('the first level:[' . $ck . '] must be array!');
         }
-
         $res = [];
-        $file = dirname((new ReflectionClass(ClassLoader::class))->getFileName(), 3) . '/config/' . $filename . '.php';
+        if (strlen($appname)) {
+            $file = dirname((new ReflectionClass(ClassLoader::class))->getFileName(), 3) . '/config/' . $appname . '/' . $filename . '.php';
+        } else {
+            $file = dirname((new ReflectionClass(ClassLoader::class))->getFileName(), 3) . '/config/' . $filename . '.php';
+        }
         if (is_file($file)) {
             $tmp = self::requireFile($file);
             if (!is_array($tmp)) {
